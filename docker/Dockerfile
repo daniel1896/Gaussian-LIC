@@ -26,33 +26,34 @@ RUN apt-get update && apt-get install -y \
 # -------------------------------
 # CUDA Environment (mounted from host)
 # -------------------------------
-ENV CUDA_HOME=/usr/local/cuda-12.6
+# Changed to CUDA 11.7
+ENV CUDA_HOME=/usr/local/cuda-11.7
 ENV PATH=${CUDA_HOME}/bin:${PATH}
-ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+# Added default value for LD_LIBRARY_PATH to fix warning
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH:-}
 ENV CUDA_TOOLKIT_ROOT_DIR=${CUDA_HOME}
 ENV CUDA_INCLUDE_DIRS=${CUDA_HOME}/include
 ENV CUDA_LIB_DIR=${CUDA_HOME}/lib64
 
 # -------------------------------
-# Python 3.10 and pip
+# Python 3.8 and pip (Default for Ubuntu 20.04 and JP5)
 # -------------------------------
 RUN apt-get update && apt-get install -y \
-    python3.10 \
-    python3.10-dev \
+    python3.8 \
+    python3.8-dev \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
 # Update pip
-RUN python3.10 -m pip install --upgrade pip
+RUN python3.8 -m pip install --upgrade pip
 
 # -------------------------------
 # PyTorch for ARM64/Jetson
 # -------------------------------
-# Install PyTorch 2.0 with CUDA support for Jetson
-# Using the official Jetson PyTorch wheel
-RUN python3.10 -m pip install --no-cache-dir \
-    torch==2.8.0 torchvision==0.23.0 \
-    --index-url=https://pypi.jetson-ai-lab.io/jp6/cu126
+# Install PyTorch 2.0.0 for Python 3.8 (cp38) and JetPack 5 (CUDA 11.x)
+# Using the official NVIDIA wheel
+RUN python3.8 -m pip install --no-cache-dir \
+    https://developer.download.nvidia.cn/compute/redist/jp/v511/pytorch/torch-2.0.0+nv23.05-cp38-cp38-linux_aarch64.whl
 
 # Install torchvision (compatible version)
 RUN apt-get update && apt-get install -y \
@@ -60,7 +61,8 @@ RUN apt-get update && apt-get install -y \
     libpng-dev \
     && rm -rf /var/lib/apt/lists/*
 
-RUN python3.10 -m pip install --no-cache-dir torchvision==0.15.0
+# torchvision 0.15.0 is compatible with torch 2.0.0
+RUN python3.8 -m pip install --no-cache-dir torchvision==0.15.0
 
 # -------------------------------
 # ROS Noetic
@@ -134,7 +136,7 @@ RUN cd opencv-4.7.0 && mkdir build && cd build && \
     make -j$(nproc) && \
     make install && \
     ldconfig && \
-    cd /tmp && rm -rf opencv-4.7.0 opencv_contrib-4.7.0
+    cd / && rm -rf /tmp/opencv-4.7.0 /tmp/opencv_contrib-4.7.0
 
 # -------------------------------
 # Additional Dependencies
@@ -165,7 +167,7 @@ RUN git clone --depth 1 -b v0.8 https://github.com/stevenlovegrove/Pangolin.git 
     cmake .. -DCMAKE_BUILD_TYPE=Release && \
     make -j$(nproc) && \
     make install && \
-    cd /tmp && rm -rf Pangolin
+    cd / && rm -rf /tmp/Pangolin
 
 # -------------------------------
 # Create Catkin Workspace
@@ -184,7 +186,7 @@ RUN git clone https://github.com/Livox-SDK/livox_ros_driver.git
 # Set Torch Directory in CMakeLists
 # -------------------------------
 # Update the CMakeLists.txt to find PyTorch correctly
-RUN TORCH_PATH=$(python3.10 -c "import torch; print(torch.__path__[0])") && \
+RUN TORCH_PATH=$(python3.8 -c "import torch; print(torch.__path__[0])") && \
     sed -i "s|set(Torch_DIR /usr/local/lib/python3.10/dist-packages/torch/share/cmake/Torch)|set(Torch_DIR ${TORCH_PATH}/share/cmake/Torch)|g" \
     /catkin_ws/src/gaussian-lic/CMakeLists.txt
 
