@@ -5,7 +5,7 @@ SET(CMAKE_BUILD_TYPE "Release")
 # SET(CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} -O3")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall -g -Wno-sign-compare -Wno-unused -Wno-comment -pthread")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -msse4.2")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
 
 find_package(catkin REQUIRED COMPONENTS
   roscpp
@@ -23,12 +23,12 @@ find_package(catkin REQUIRED COMPONENTS
   eigen_conversions
 )
 
-set(OpenCV_DIR ~/Software/opencv/opencv-4.7.0/build)
+# set(OpenCV_DIR ~/Software/opencv/opencv-4.7.0/build)
 find_package(OpenCV 4 REQUIRED)
-set(Torch_DIR ~/Software/libtorch/share/cmake/Torch)
+set(Torch_DIR /usr/local/lib/python3.8/dist-packages/torch/share/cmake/Torch)
 find_package(Torch REQUIRED)
 
-set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda-11.7")
+set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda")
 set(CUDA_INCLUDE_DIRS "${CUDA_TOOLKIT_ROOT_DIR}/include")
 set(CUDA_LIB_DIR "${CUDA_TOOLKIT_ROOT_DIR}/lib64")
 find_package(CUDA REQUIRED)
@@ -37,6 +37,7 @@ find_library(FFI_LIB ffi)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(YAML_CPP REQUIRED yaml-cpp>=0.5)
 
+set(Python3_EXECUTABLE /usr/bin/python3.8)
 find_package(Python3 COMPONENTS Interpreter Development NumPy REQUIRED)
 
 catkin_package(

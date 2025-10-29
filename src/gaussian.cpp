@@ -704,11 +704,11 @@ double optimize(const std::shared_ptr<Dataset>& dataset, std::shared_ptr<Gaussia
         updated_num += visible.sum().item<int>();
         pc->sparse_optimizer_->set_visibility_and_N(visible, pc->getXYZ().size(0));
         pc->sparse_optimizer_->step();
-        pc->sparse_optimizer_->zero_grad(true);
+        pc->sparse_optimizer_->zero_grad();
         if (pc->apply_exposure_)
         {
             pc->exposure_optimizer_->step();
-            pc->exposure_optimizer_->zero_grad(true);
+            pc->exposure_optimizer_->zero_grad();
         }
         torch::cuda::synchronize();
         pc->t_end_ = std::chrono::steady_clock::now();

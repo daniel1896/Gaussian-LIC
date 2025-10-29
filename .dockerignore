@@ -1,0 +1,18 @@
+# Git
+.git
+.gitignore
+
+# Catkin build artifacts
+build/
+devel/
+
+# Data and logs
+*.bag
+data/
+logs/
+
+# Common IDE / Python files
+.vscode/
+.ccls-cache/
+__pycache__/
+*.pyc
