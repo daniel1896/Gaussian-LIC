@@ -1,5 +1,5 @@
 # Gaussian-LIC Dockerfile for ARM64 (Jetson Orin/Xavier)
-# Uses host CUDA installation via volume mount
+# USES CUDA 11.4 (JetPack 5.x)
 
 FROM arm64v8/ubuntu:20.04
 
@@ -16,7 +16,6 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     software-properties-common \
     build-essential \
-    cmake \
     git \
     pkg-config \
     libgomp1 \
@@ -24,12 +23,27 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # -------------------------------
-# CUDA Environment (mounted from host)
+# Install CUDA Toolkit 11.4 and CUDNN for JetPack 5
 # -------------------------------
-# Changed to CUDA 11.7
-ENV CUDA_HOME=/usr/local/cuda-11.7
+# Add NVIDIA's L4T repository and fetch key
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gnupg2 \
+    && rm -rf /var/lib/apt/lists/*
+RUN apt-key adv --fetch-keys http://repo.download.nvidia.com/jetson/jetson-ota-public.asc && \
+    echo 'deb https://repo.download.nvidia.com/jetson/common r35.3 main' > /etc/apt/sources.list.d/nvidia-l4t-apt-source.list && \
+    echo 'deb https://repo.download.nvidia.com/jetson/t234 r35.3 main' >> /etc/apt/sources.list.d/nvidia-l4t-apt-source.list
+
+# Install CUDA 11.4 Toolkit and CUDNN 8
+RUN apt-get update && apt-get install -y \
+    cuda-toolkit-11-4 \
+    libcudnn8-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# -------------------------------
+# CUDA Environment (switched to 11.4)
+# -------------------------------
+ENV CUDA_HOME=/usr/local/cuda-11.4
 ENV PATH=${CUDA_HOME}/bin:${PATH}
-# Added default value for LD_LIBRARY_PATH to fix warning
 ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH:-}
 ENV CUDA_TOOLKIT_ROOT_DIR=${CUDA_HOME}
 ENV CUDA_INCLUDE_DIRS=${CUDA_HOME}/include
@@ -47,11 +61,13 @@ RUN apt-get update && apt-get install -y \
 # Update pip
 RUN python3.8 -m pip install --upgrade pip
 
+# Install a modern version of CMake
+RUN python3.8 -m pip install cmake
+
 # -------------------------------
 # PyTorch for ARM64/Jetson
 # -------------------------------
-# Install PyTorch 2.0.0 for Python 3.8 (cp38) and JetPack 5 (CUDA 11.x)
-# Using the official NVIDIA wheel
+# Install PyTorch 2.0.0 for Python 3.8 (cp38) and JetPack 5.1.1 (CUDA 11.4)
 RUN python3.8 -m pip install --no-cache-dir \
     https://developer.download.nvidia.cn/compute/redist/jp/v511/pytorch/torch-2.0.0+nv23.05-cp38-cp38-linux_aarch64.whl
 
@@ -88,6 +104,7 @@ ENV ROS_DISTRO=noetic
 # -------------------------------
 # OpenCV 4.7.0 with CUDA
 # -------------------------------
+# Added GStreamer dev libraries
 RUN apt-get update && apt-get install -y \
     libgtk-3-dev \
     libavcodec-dev \
@@ -106,14 +123,17 @@ RUN apt-get update && apt-get install -y \
     openexr \
     libopenexr-dev \
     libatlas-base-dev \
+    libgstreamer1.0-dev \
+    libgstreamer-plugins-base1.0-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Build OpenCV from source with CUDA support
 WORKDIR /tmp
-RUN wget -q https://github.com/opencv/opencv/archive/refs/tags/4.7.0.tar.gz && \
-    tar -zxf 4.7.0.tar.gz && \
-    wget -q https://github.com/opencv/opencv_contrib/archive/refs/tags/4.7.0.tar.gz && \
-    tar -zxf 4.7.0.tar.gz && \
+# Use -O to specify output filenames and avoid conflicts
+RUN wget -q https://github.com/opencv/opencv/archive/refs/tags/4.7.0.tar.gz -O opencv.tar.gz && \
+    tar -zxf opencv.tar.gz && \
+    wget -q https://github.com/opencv/opencv_contrib/archive/refs/tags/4.7.0.tar.gz -O opencv_contrib.tar.gz && \
+    tar -zxf opencv_contrib.tar.gz && \
     rm -f *.tar.gz
 
 RUN cd opencv-4.7.0 && mkdir build && cd build && \
@@ -132,6 +152,7 @@ RUN cd opencv-4.7.0 && mkdir build && cd build && \
     -DBUILD_PERF_TESTS=OFF \
     -DWITH_FFMPEG=ON \
     -DWITH_GSTREAMER=ON \
+    -DCUDA_TOOLKIT_ROOT_DIR=${CUDA_HOME} \
     .. && \
     make -j$(nproc) && \
     make install && \
@@ -156,6 +177,7 @@ RUN apt-get update && apt-get install -y \
     libx11-dev \
     libglm-dev \
     libffi-dev \
+    libopenblas-base \
     && rm -rf /var/lib/apt/lists/*
 
 # -------------------------------
@@ -168,6 +190,17 @@ RUN git clone --depth 1 -b v0.8 https://github.com/stevenlovegrove/Pangolin.git 
     make -j$(nproc) && \
     make install && \
     cd / && rm -rf /tmp/Pangolin
+
+# -------------------------------
+# Livox SDK (Dependency for livox_ros_driver)
+# -------------------------------
+WORKDIR /tmp
+RUN git clone https://github.com/Livox-SDK/Livox-SDK.git && \
+    cd Livox-SDK && cd build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && \
+    make -j$(nproc) && \
+    make install && \
+    cd / && rm -rf /tmp/Livox-SDK
 
 # -------------------------------
 # Create Catkin Workspace
@@ -200,6 +233,8 @@ RUN source /opt/ros/${ROS_DISTRO}/setup.bash && \
     cd /catkin_ws && \
     rosdep install --from-paths src --ignore-src -r -y --rosdistro ${ROS_DISTRO} || true && \
     catkin_make -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+    -DCMAKE_CUDA_STANDARD=17 \
     -DCUDA_TOOLKIT_ROOT_DIR=${CUDA_HOME} \
     -DCUDA_INCLUDE_DIRS=${CUDA_INCLUDE_DIRS}
 
