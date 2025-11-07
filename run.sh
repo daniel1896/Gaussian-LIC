@@ -1,5 +1,5 @@
 #!/bin/bash
-# Script to run the Gaussian-LIC Docker container with CUDA support (JP6)
+# Script to run the Gaussian-LIC ROS2 Humble Docker container
 
 # IMPORTANT: Run this on your HOST machine ONCE before running the script:
 # xhost +local:docker

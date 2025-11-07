@@ -6,7 +6,7 @@
 FROM nvcr.io/nvidia/pytorch:24.01-py3-igpu
 
 # Metadata
-LABEL maintainer="Daniel Henning"
+LABEL maintainer="Your Name"
 LABEL description="Gaussian-LIC + ROS2 Humble + PyTorch for Jetson Orin (JP6)"
 
 # Set environment variables
@@ -62,7 +62,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-image-transport \
     ros-humble-tf2-ros \
     ros-humble-tf2-eigen \
-    ros-humble-eigen-conversions \
     ros-humble-nav-msgs \
     # Libraries for Pangolin
     libglew-dev \
@@ -87,25 +86,17 @@ RUN git clone --depth 1 -b v0.8 https://github.com/stevenlovegrove/Pangolin.git 
     cd / && rm -rf /tmp/Pangolin
 
 # -------------------------------
-# Build Livox-SDK from source
-# -------------------------------
-WORKDIR /tmp
-RUN git clone https://github.com/Livox-SDK/Livox-SDK.git && \
-    cd Livox-SDK && cd build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && \
-    make -j$(nproc) && \
-    make install && \
-    cd / && rm -rf /tmp/Livox-SDK
-
-# -------------------------------
 # Create ROS 2 Workspace
 # -------------------------------
 WORKDIR /ros2_ws
 RUN mkdir -p /ros2_ws/src
 
-# Install Livox ROS2 driver
+# Install Livox ROS2 driver (as specified in your README)
 WORKDIR /ros2_ws/src
-RUN git clone -b ros2 https://github.com/Livox-SDK/livox_ros_driver.git
+RUN git clone https://github.com/Livox-SDK/livox_ros2_driver.git
+
+# Install ZED ROS2 Wrapper (Corrected)
+RUN git clone https://github.com/stereolabs/zed-ros2-wrapper.git
 
 # Copy Gaussian-LIC source code into the workspace
 COPY . /ros2_ws/src/gaussian-lic
@@ -124,7 +115,7 @@ RUN TORCH_PATH=$(python3.10 -c "import torch; print(torch.__path__[0])") && \
 # -------------------------------
 SHELL ["/bin/bash", "-c"]
 
-# Install dependencies
+# Install dependencies from all packages
 RUN source /opt/ros/${ROS_DISTRO}/setup.bash && \
     cd /ros2_ws && \
     rosdep install --from-paths src --ignore-src -r -y --rosdistro ${ROS_DISTRO} || true
