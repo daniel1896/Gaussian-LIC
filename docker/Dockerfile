@@ -1,104 +1,82 @@
 # Gaussian-LIC Dockerfile for ARM64 (Jetson Orin/Xavier)
-# USES HOST CUDA (JetPack 6.x)
+# BASE: JetPack 6 (Ubuntu 22.04, CUDA 12.x)
+# TARGET: ROS2 Humble
 
-# 1. Base Image (Ubuntu 22.04 for JetPack 6)
-FROM arm64v8/ubuntu:22.04
+# Use NVIDIA PyTorch 24.01 iGPU container (Ubuntu 22.04 based)
+FROM nvcr.io/nvidia/pytorch:24.01-py3-igpu
 
+# Metadata
+LABEL maintainer="Daniel Henning"
+LABEL description="Gaussian-LIC + ROS2 Humble + PyTorch for Jetson Orin (JP6)"
+
+# Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
+ENV ROS_DISTRO=humble
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
-# -------------------------------
-# System Dependencies
-# -------------------------------
-RUN apt-get update && apt-get install -y \
-    wget \
-    curl \
-    gnupg2 \
-    lsb-release \
-    ca-certificates \
+# Install basic tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    vim git wget curl \
     software-properties-common \
-    build-essential \
-    git \
-    pkg-config \
-    libgomp1 \
-    libnuma1 \
+    locales lsb-release gnupg2 \
+    cmake python3-numpy \
+    libopenblas-base \
     && rm -rf /var/lib/apt/lists/*
 
-# -------------------------------
-# Python 3.10 (Default for Ubuntu 22.04)
-# -------------------------------
-RUN apt-get update && apt-get install -y \
-    python3.10 \
-    python3.10-dev \
-    python3-pip \
-    && rm -rf /var/lib/apt/lists/*
+# Set up locale for ROS2
+RUN locale-gen en_US en_US.UTF-8 && \
+    update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
+ENV LANG=en_US.UTF-8
 
-# Install a modern CMake via pip
-RUN python3.10 -m pip install --upgrade pip
-RUN python3.10 -m pip install cmake
+# Add ROS2 apt repository
+RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu jammy main" | tee /etc/apt/sources.list.d/ros2.list > /dev/null
 
-# -------------------------------
-# PyTorch for ARM64/Jetson (JetPack 6.0)
-# -------------------------------
-# Install PyTorch for Python 3.10 and JetPack 6.0 (CUDA 12.x)
-# Find new wheels here: https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/
-RUN python3.10 -m pip install --no-cache-dir \
-    https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torch-2.3.0a0+eb1a57b15d.nv24.05-cp310-cp310-linux_aarch64.whl
-
-# Install torchvision (compatible with torch 2.3)
-RUN apt-get update && apt-get install -y \
-    libjpeg-dev \
-    libpng-dev \
-    && rm -rf /var/lib/apt/lists/*
-RUN python3.10 -m pip install --no-cache-dir torchvision==0.18.0
-
-# -------------------------------
-# ROS 2 Humble (for Ubuntu 22.04)
-# -------------------------------
-RUN apt-get update && apt-get install -y \
-    software-properties-common \
-    && add-apt-repository universe \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
-RUN echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | tee /etc/apt/sources.list.d/ros2.list > /dev/null
-
-RUN apt-get update && apt-get install -y \
+# Install ROS2 Humble and MAVROS (from your README)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-desktop-full \
+    ros-humble-mavros \
+    ros-humble-mavros-msgs \
+    ros-humble-mavros-extras \
     python3-rosdep \
     python3-colcon-common-extensions \
     && rm -rf /var/lib/apt/lists/*
 
 # Initialize rosdep
-RUN rosdep init || true
-RUN rosdep update
-
-ENV ROS_DISTRO=humble
+RUN rosdep init || true \
+    && rosdep update
 
 # -------------------------------
-# OpenCV (from ROS) and Additional Dependencies
+# Install Gaussian-LIC Dependencies
 # -------------------------------
-# We will use the OpenCV that comes with ROS Humble, not build from source.
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # OpenCV (from ROS/Ubuntu)
     libopencv-dev \
-    libeigen3-dev \
-    libyaml-cpp-dev \
-    libpcl-dev \
     ros-humble-cv-bridge \
-    ros-humble-image-transport \
+    # PCL
+    libpcl-dev \
     ros-humble-pcl-conversions \
     ros-humble-pcl-ros \
+    # Core ROS2 replacements
+    ros-humble-image-transport \
     ros-humble-tf2-ros \
+    ros-humble-tf2-eigen \
     ros-humble-eigen-conversions \
+    ros-humble-nav-msgs \
+    # Libraries for Pangolin
     libglew-dev \
     libglfw3-dev \
     libx11-dev \
     libglm-dev \
+    # Other
+    libeigen3-dev \
+    libyaml-cpp-dev \
     libffi-dev \
-    libopenblas-base \
     && rm -rf /var/lib/apt/lists/*
 
 # -------------------------------
-# Pangolin (for visualization)
+# Build Pangolin v0.8 from source
 # -------------------------------
 WORKDIR /tmp
 RUN git clone --depth 1 -b v0.8 https://github.com/stevenlovegrove/Pangolin.git && \
@@ -109,7 +87,7 @@ RUN git clone --depth 1 -b v0.8 https://github.com/stevenlovegrove/Pangolin.git 
     cd / && rm -rf /tmp/Pangolin
 
 # -------------------------------
-# Livox SDK (Dependency for livox_ros_driver)
+# Build Livox-SDK from source
 # -------------------------------
 WORKDIR /tmp
 RUN git clone https://github.com/Livox-SDK/Livox-SDK.git && \
@@ -120,23 +98,23 @@ RUN git clone https://github.com/Livox-SDK/Livox-SDK.git && \
     cd / && rm -rf /tmp/Livox-SDK
 
 # -------------------------------
-# Create ROS 2 Workspace (renamed from catkin_ws)
+# Create ROS 2 Workspace
 # -------------------------------
 WORKDIR /ros2_ws
 RUN mkdir -p /ros2_ws/src
 
-# Copy the Gaussian-LIC source code
-COPY . /ros2_ws/src/gaussian-lic
-
-# Install Livox ROS 2 driver
+# Install Livox ROS2 driver
 WORKDIR /ros2_ws/src
 RUN git clone -b ros2 https://github.com/Livox-SDK/livox_ros_driver.git
+
+# Copy Gaussian-LIC source code into the workspace
+COPY . /ros2_ws/src/gaussian-lic
 
 # -------------------------------
 # Set Torch Directory in CMakeLists
 # -------------------------------
 # Update the CMakeLists.txt to find PyTorch correctly
-# NOTE: This may fail if the old path isn't in the file.
+# Note: This finds python3.10 from the 'nvcr.io/nvidia/pytorch:24.01-py3-igpu' base image
 RUN TORCH_PATH=$(python3.10 -c "import torch; print(torch.__path__[0])") && \
     sed -i "s|set(Torch_DIR /usr/local/lib/python3.10/dist-packages/torch/share/cmake/Torch)|set(Torch_DIR ${TORCH_PATH}/share/cmake/Torch)|g" \
     /ros2_ws/src/gaussian-lic/CMakeLists.txt || echo "sed command failed, but continuing build."
@@ -146,27 +124,23 @@ RUN TORCH_PATH=$(python3.10 -c "import torch; print(torch.__path__[0])") && \
 # -------------------------------
 SHELL ["/bin/bash", "-c"]
 
-# Source ROS 2 and build
+# Install dependencies
 RUN source /opt/ros/${ROS_DISTRO}/setup.bash && \
     cd /ros2_ws && \
     rosdep install --from-paths src --ignore-src -r -y --rosdistro ${ROS_DISTRO} || true
 
-# !!! WARNING !!!
-# The following build WILL FAIL. The Gaussian-LIC code is for ROS 1 (Noetic)
-# and must be manually ported to ROS 2 (Humble) to compile.
-# This step is included as a placeholder for when the code is ported.
-# -------------------------------------------------------------------------
-# RUN source /opt/ros/${ROS_DISTRO}/setup.bash && \
-#     cd /ros2_ws && \
-#     colcon build --symlink-install --cmake-args \
-#     -DCMAKE_BUILD_TYPE=Release \
-#     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-#     -DCMAKE_CUDA_STANDARD=17
-# -------------------------------------------------------------------------
+# Build the workspace
+RUN source /opt/ros/${ROS_DISTRO}/setup.bash && \
+    cd /ros2_ws && \
+    colcon build --symlink-install --cmake-args \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+    -DCMAKE_CUDA_STANDARD=17
 
 # -------------------------------
 # Setup Entrypoint
 # -------------------------------
+# Note: Ensure you have a 'docker-entrypoint.sh' file in a 'docker' directory
 COPY ./docker/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
